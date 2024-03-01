@@ -98,9 +98,8 @@ def main():
             labels = labels[~labels_nan]
         X_n_samples = np.zeros(len(labels))
         
+        # We run nested CV for N_REPEATS
         for nreps in range(cfg.N_REPEATS):
-            if nreps==1:
-                break
             
             # set up the outer split
             splitter = KFold(n_splits=cfg.N_OUTER_CV, shuffle=True, random_state=seeds[nreps])
@@ -108,6 +107,7 @@ def main():
             # test_idxs = [test_idx for _,test_idx in splitter.split(X_n_samples, y=labels)]
             train_idxs, test_idxs = zip(*[(train_idx, test_idx) for train_idx, test_idx in splitter.split(X_n_samples, y=labels)])
             
+            # Generate the outer-folds 
             for fold, (train_idx, test_idx) in enumerate(zip(train_idxs, test_idxs)):
                 data_mask = np.zeros(len(labels_nan))
                 data_mask[test_idx] = True
@@ -151,10 +151,6 @@ def main():
                     inner_train_idx, inner_val_idx = train_test_split(train_idx, test_size=0.25, 
                                                                     random_state=seeds_inner[0], shuffle=True, stratify=train_labels)
                     own_kfold_indices = [(inner_train_idx, inner_val_idx)]
-                    
-
-                # data_paths = train_data_paths #if nested else cfg.DATA_PATHS
-                # test_paths = train_data_paths #if nested else cfg.DATA_PATHS
             
                 # Generate the parameter grid
                 param_grid = ParameterGrid(params["GRID"])
@@ -233,9 +229,7 @@ def main():
                                                 
                 best_hp_dict = dict(ast.literal_eval(best_hp_key))
                 hp_dict = {**params, **best_hp_dict}                    
-                
-                # Refit on training + validation data
-                
+                                
                 # !!! THIS IS NOT POSSIBLE UNTIL WE CAN SAVE AND LOAD THE BEST_VAL MODEL
                 # Check the training loss on the checkpoint, which will be our early stop threshold
                 # checkpoint_path = os.path.join(os.getcwd(), output_paths["checkpoints"])
@@ -263,8 +257,10 @@ def main():
                 }
                 for path in output_paths.values():
                     os.makedirs(path, exist_ok=True)
-                    
+                
+                # finally, we refit the best performing model on train+val and     
                 # custom early stopping with KFold is not yet supported. Thus, we need to use custom test_indices
+                
                             
                 dm_test = prepare_fusion_data(prediction_task=params["PREDICTION_TASK"],
                             fusion_model=fusion_model,
