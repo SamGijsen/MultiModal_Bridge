@@ -3,6 +3,7 @@ import os, argparse
 import sys
 import importlib
 import ast
+import random
 
 import numpy as np
 import pandas as pd
@@ -181,7 +182,7 @@ def main():
                         }
                         for path in output_paths.values():
                             os.makedirs(path, exist_ok=True)
-                
+
                         dm = prepare_fusion_data(prediction_task=params["PREDICTION_TASK"],
                                                 fusion_model=fusion_model,
                                                 data_paths=cfg.DATA_PATHS, 
@@ -226,9 +227,10 @@ def main():
                         best_hp_key = k
                         target_epoch = cumulative_epochs[k]/cfg.N_INNER_CV
                         target_train_loss = cumulative_train_loss[k]/cfg.N_INNER_CV
-                                                
+                
                 best_hp_dict = dict(ast.literal_eval(best_hp_key))
-                hp_dict = {**params, **best_hp_dict}                    
+                extra_suffix_dict = {k: best_hp_dict[k] for k in params["GRID"].keys() if k in best_hp_dict}
+                hp_dict = {**params, **best_hp_dict}       
                                 
                 # !!! THIS IS NOT POSSIBLE UNTIL WE CAN SAVE AND LOAD THE BEST_VAL MODEL
                 # Check the training loss on the checkpoint, which will be our early stop threshold
@@ -286,4 +288,40 @@ def main():
                     weight_decay=hp_dict["WEIGHT_DECAY"],
                     training_modifications=training_mod)
                 
+                
+def impute_data(data_paths, temp_path, indices):
+    # Load data and impute within each fold
+    
+    suffix = random.randint(1, 10000000)
+    new_data_paths = deepcopy(data_paths)
+    
+    for tab in ["tabular1", "tabular2"]:
+        if data_paths[tab] != "":
+            df = pd.read_csv(data_paths[tab])
+            
+            imputed_df = pd.DataFrame(index=df.index, columns=df.columns)
+            
+            df_parts = []
+            for i, idx in enumerate(indices):
+                df_part = df.iloc[idx]
+                if i == 0:
+                    medians = df_part.median()
+                df_part_filled = df_part.fillna(medians)
+                
+                imputed_df.iloc[idx] = df_part_filled
+                
+            # save the imputed df with a new name
+            new_name = data_paths[tab].split("/")[-1].replace(".csv", f"_{str(suffix)}.csv")
+            imputed_df.to_csv(temp_path + new_name)
+            new_data_paths[tab] = temp_path + new_name
+            
+    return new_data_paths
+
+def remove_imputed_data(data_paths):
+    for _, path in data_paths.items():
+        if path:  # Checks if the path is not empty
+            if os.path.isfile(path):  # Checks if the file exists
+                os.remove(path)  # Deletes the file
+
+
 if __name__ == "__main__": main()
